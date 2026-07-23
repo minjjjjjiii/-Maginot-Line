@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>마지노선 - 가장 공평한 중간역 찾기</title>
+
+<!-- Tailwind CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          ink: '#0F1019',
+          surface: '#FFFFFF',      /* 메인 배경: 흰색 */
+          surface2: '#F3F4F6',     /* 요소 배경: 아주 연한 회색 */
+          line: '#E5E7EB',         /* 경계선: 연한 회색 */
+          lime: '#48BB0D',         /* 강조색 */
+          pink: '#FF4D8D',
+          sky: '#4DD8FF',
+          amber: '#FFC24D',
+          sub: '#6B7280',          /* 서브 텍스트: 회색 */
+        },
+        fontFamily: {
+          display: ['Pretendard', 'sans-serif'],
+          body: ['Pretendard', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        boxShadow: {
+          card: '0 24px 70px -18px rgba(0,0,0,0.1)',
+        },
+        borderRadius: {
+          xl2: '28px',
+        },
+      },
+    },
+  };
+</script>
+
+<!-- Fonts -->
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght=400;500;700&display=swap" rel="stylesheet" />
+
+<!-- Supabase CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body { overscroll-behavior-y: none; }
+  body { font-family: 'Pretendard', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+  ::-webkit-scrollbar { width: 0px; height: 0px; }
+
+  .screen { transition: opacity .35s ease, transform .35s ease; }
+  .screen-enter { opacity: 0; transform: translateY(14px); }
+
+  .chip {
+    transition: all .18s ease;
+  }
+  .chip[data-selected="true"] {
+    background: #48BB0D;
+    color: #FFFFFF;
+    border-color: #48BB0D;
+  }
+
+  /* subway line connector */
+  .stop-line {
+    position: absolute;
+    left: 15px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: repeating-linear-gradient(180deg, #E5E7EB 0 6px, transparent 6px 11px);
+  }
+
+  @keyframes trainMove {
+    0% { left: 0%; }
+    50% { left: calc(100% - 26px); }
+    100% { left: 0%; }
+  }
+  .train-run {
+    animation: trainMove 1.6s cubic-bezier(.65,0,.35,1) infinite;
+  }
+
+  @keyframes popIn {
+    0% { opacity: 0; transform: scale(.85) translateY(6px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .pop-in { animation: popIn .5s cubic-bezier(.2,.8,.25,1) both; }
+
+  @keyframes ringPulse {
+    0% { box-shadow: 0 0 0 0 rgba(72,187,13,0.45); }
+    100% { box-shadow: 0 0 0 16px rgba(72,187,13,0); }
+  }
+  .ring-pulse { animation: ringPulse 1.6s ease-out infinite; }
+
+  @keyframes dotFloat {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-4px); }
+  }
+  .dot-float { animation: dotFloat 2.4s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .train-run, .pop-in, .ring-pulse, .dot-float { animation: none !important; }
+    .screen { transition: none !important; }
+  }
+
+  input:focus-visible, button:focus-visible, select:focus-visible {
+    outline: 2px solid #48BB0D;
+    outline-offset: 2px;
+  }
+
+  .hidden-screen { display: none; }
+
+  /* ==================== 다크모드 추가 스타일 ==================== */
+  html.dark body {
+    background-color: #0F1019 !important;
+    color: #F9FAFB !important;
+  }
+  html.dark .bg-surface {
+    background-color: #1A1C28 !important;
+  }
+  html.dark .bg-surface2 {
+    background-color: #26293B !important;
+    color: #F9FAFB !important;
+  }
+  html.dark .border-line {
+    border-color: #373A52 !important;
+  }
+  html.dark .text-ink {
+    color: #F9FAFB !important;
+  }
+  html.dark .text-sub {
+    color: #9CA3AF !important;
+  }
+  html.dark input {
+    color: #F9FAFB !important;
+  }
+  html.dark .stop-line {
+    background: repeating-linear-gradient(180deg, #373A52 0 6px, transparent 6px 11px);
+  }
+  html.dark #goto-screen2-btn {
+    background-color: #374151 !important;
+    color: #FFFFFF !important;
+  }
+
+  /* 약속 카테고리 칩 버튼 다크모드 가독성 보정 */
+  html.dark .chip {
+    background-color: #26293B !important;
+    color: #F9FAFB !important;
+    border-color: #373A52 !important;
+  }
+  html.dark .chip[data-selected="true"] {
+    background-color: #48BB0D !important;
+    color: #FFFFFF !important;
+    border-color: #48BB0D !important;
+  }
+
+  /* 다크모드 시 참여자 왼쪽 작은 원형 포인트 바깥 테두리링 배경 수정 */
+  html.dark .ring-surface {
+    --tw-ring-color: #1A1C28 !important;
+  }
+
+  .theme-btn-w, .theme-btn-b {
+    transition: all 0.2s ease;
+  }
+  html.dark .theme-btn-w {
+    display: none !important;
+  }
+  html:not(.dark) .theme-btn-b {
+    display: none !important;
+  }
+</style>
+</head>
+
+<body class="bg-[#F9FAFB] text-ink min-h-screen flex items-center justify-center p-0 md:p-6 lg:p-8">
+
+  <!-- 반응형 랩퍼: 데스크톱(lg)에서 2단 그리드, 태블릿/모바일은 단일 열 -->
+  <div class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 items-center min-h-screen md:min-h-0">
+    
+    <!-- [데스크톱 전용 Left Hero Panel] - lg 이상에서 노출 -->
+    <div class="hidden lg:flex lg:col-span-6 flex-col justify-between p-8 xl:p-12 h-full min-h-[640px]">
+      <div>
+        <div class="flex items-center gap-2 mb-8">
+          <div class="w-10 h-10 rounded-2xl bg-lime/10 border border-lime/30 flex items-center justify-center text-xl">🚇</div>
+          <span class="font-display font-extrabold text-2xl tracking-tight text-ink">마지노선</span>
+        </div>
+        <h1 class="font-display font-extrabold text-4xl xl:text-5xl leading-tight text-ink mb-6">
+          친구들과 만날 때<br/>
+          <span class="text-lime">가장 공평한 위치</span>를<br/>
+          찾아드려요.
+        </h1>
+        <p class="text-sub text-base xl:text-lg leading-relaxed mb-8">
+          각자의 출발역만 입력하면 수도권 지하철망 좌표 데이터를 바탕으로 최적의 중간역과 주변 추천 스팟까지 한눈에 안내합니다.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-4 border-t border-line pt-6">
+        <div class="flex flex-col">
+          <span class="font-mono text-xl font-bold text-lime">100%</span>
+          <span class="text-xs text-sub mt-1">공평한 거리 계산</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="font-mono text-xl font-bold text-lime">1~9호선</span>
+          <span class="text-xs text-sub mt-1">수도권 전역 지원</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="font-mono text-xl font-bold text-lime">LIVE</span>
+          <span class="text-xs text-sub mt-1">실시간 친구 참여</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- [메인 모바일/태블릿/데스크톱 앱 프레임] -->
+    <div class="w-full lg:col-span-6 max-w-[480px] md:max-w-[540px] lg:max-w-[480px] mx-auto min-h-screen md:min-h-[720px] bg-surface md:rounded-xl2 md:shadow-card relative overflow-hidden flex flex-col border-0 md:border md:border-line">
+
+      <!-- Top bar -->
+      <header class="px-6 pt-6 pb-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <!-- 원형 화면 전환 버튼 -->
+          <button id="theme-toggle-btn" type="button" class="w-8 h-8 rounded-full bg-surface2 border border-line flex items-center justify-center cursor-pointer active:scale-95 transition-transform shrink-0 mr-1" title="화면 테마 전환">
+            <span class="theme-btn-w font-mono font-bold text-sm text-lime">W</span>
+            <span class="theme-btn-b font-mono font-bold text-sm text-white">B</span>
+          </button>
+
+          <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+            <img src="./map.svg" width="26" height="26" viewBox="0 0 26 26" fill="none">
+          </svg>
+          <span class="font-display font-extrabold text-lg tracking-tight">마지노선</span>
+        </div>
+        <div id="stepper" class="flex items-center gap-1.5 font-mono text-[11px] text-sub">
+          <span data-step="1" class="step-dot w-2 h-2 rounded-full bg-lime"></span>
+          <span class="w-3 h-[2px] bg-line"></span>
+          <span data-step="2" class="step-dot w-2 h-2 rounded-full bg-line"></span>
+          <span class="w-3 h-[2px] bg-line"></span>
+          <span data-step="3" class="step-dot w-2 h-2 rounded-full bg-line"></span>
+        </div>
+      </header>
+
+      <main class="flex-1 px-6 pb-8 flex flex-col justify-center md:justify-start">
+
+        <!-- ===================== SCREEN 1 : 방장 - 약속 만들기 ===================== -->
+        <section id="screen-1" class="screen flex flex-col gap-6">
+          <div>
+            <h1 class="font-display font-extrabold text-[28px] leading-tight">
+              어디서 만날지<br/>고민은 이제 그만
+            </h1>
+            <p class="text-sub text-sm mt-2 leading-relaxed">
+              다들 출발역만 입력하면, 가장 공평한 중간역을 찾아드려요.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-sub font-medium">약속 이름</label>
+            <input id="room-name" type="text" placeholder="예: 동기들 모임"
+              class="bg-surface2 border border-line rounded-2xl px-4 py-3.5 text-sm placeholder:text-sub/70 outline-none focus-visible:border-lime transition-colors" />
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-sub font-medium">약속 카테고리</label>
+            <div id="category-chips" class="flex flex-wrap gap-2">
+              <button type="button" data-value="맛집 투어" class="chip px-4 py-2 rounded-full border border-line bg-surface2 text-sm">🍜 맛집 투어</button>
+              <button type="button" data-value="카공" class="chip px-4 py-2 rounded-full border border-line bg-surface2 text-sm">📚 카공</button>
+              <button type="button" data-value="술자리" class="chip px-4 py-2 rounded-full border border-line bg-surface2 text-sm">🍻 술자리</button>
+              <button type="button" data-value="기타" class="chip px-4 py-2 rounded-full border border-line bg-surface2 text-sm">✨ 기타</button>
+            </div>
+          </div>
+
+          <button id="create-room-btn"
+            class="mt-2 w-full bg-lime text-white font-bold rounded-2xl py-4 text-sm active:scale-[0.98] transition-transform disabled:opacity-40 disabled:active:scale-100">
+            약속 방 만들기
+          </button>
+
+          <!-- Invite panel (hidden until room created) -->
+          <div id="invite-panel" class="hidden-screen pop-in flex flex-col gap-3 bg-surface2 border border-line rounded-2xl p-5">
+            <p class="text-xs text-sub">방이 만들어졌어요! 친구들에게 링크를 공유해 보세요.</p>
+            <div class="flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-line">
+              <span id="room-code-display" class="font-mono text-lime text-sm tracking-wider"></span>
+              <span class="text-[10px] text-sub font-mono">ROOM CODE</span>
+            </div>
+            <button id="copy-link-btn" class="w-full bg-surface border border-line rounded-xl py-3 text-sm font-medium active:scale-[0.98] transition-transform">
+              🔗 초대 링크 복사
+            </button>
+            <button id="goto-screen2-btn" class="w-full bg-[#E5E7EB] text-ink rounded-xl py-3 text-sm font-bold active:scale-[0.98] transition-transform">
+              다음(참여하기) 단계로 이동 →
+            </button>
+          </div>
+
+          <p id="supabase-note" class="text-[11px] text-sub/70 text-center mt-1"></p>
+        </section>
+
+        <!-- ===================== SCREEN 2 : 참여자 - 정보 입력 ===================== -->
+        <section id="screen-2" class="screen hidden-screen flex-col gap-6">
+          <div>
+            <h1 id="join-room-title" class="font-display font-extrabold text-[26px] leading-tight">
+              모임에 참여해요
+            </h1>
+            <p class="text-sub text-sm mt-2 leading-relaxed">
+              닉네임과 출발역을 알려주시면, 중간역 계산에 반영할게요.
+            </p>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-sub font-medium">닉네임</label>
+            <input id="nickname-input" type="text" placeholder="예: 민지"
+              class="bg-surface2 border border-line rounded-2xl px-4 py-3.5 text-sm placeholder:text-sub/70 outline-none focus-visible:border-lime transition-colors" />
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label class="text-xs text-sub font-medium">출발 지하철역</label>
+            <input id="station-input" list="station-list" type="text" placeholder="예: 강남"
+              class="bg-surface2 border border-line rounded-2xl px-4 py-3.5 text-sm placeholder:text-sub/70 outline-none focus-visible:border-lime transition-colors" />
+            <datalist id="station-list"></datalist>
+          </div>
+
+          <button id="register-btn"
+            class="mt-2 w-full bg-lime text-white font-bold rounded-2xl py-4 text-sm active:scale-[0.98] transition-transform">
+            내 출발 위치 등록하기
+          </button>
+        </section>
+
+        <!-- ===================== SCREEN 3 : 결과 대기 및 실시간 확인 ===================== -->
+        <section id="screen-3" class="screen hidden-screen flex-col gap-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 id="result-room-title" class="font-display font-extrabold text-[24px] leading-tight">참여 현황</h1>
+            </div>
+            <span id="participant-count" class="font-mono text-xs bg-surface2 border border-line rounded-full px-3 py-1.5 text-sub">0명</span>
+          </div>
+
+          <div class="relative pl-8" id="participants-wrap">
+            <div class="stop-line"></div>
+            <div id="participants-list" class="flex flex-col gap-3"></div>
+          </div>
+
+          <button id="find-mid-btn"
+            class="w-full bg-lime text-white font-bold rounded-2xl py-4 text-sm active:scale-[0.98] transition-transform mt-1">
+            우리의 중간 지점은? 🎯
+          </button>
+
+          <!-- Loading -->
+          <div id="loading-block" class="hidden-screen flex-col items-center gap-4 py-8">
+            <div class="relative w-40 h-2 bg-surface2 rounded-full overflow-visible">
+              <div class="absolute -top-2 w-6 h-6 flex items-center justify-center text-lg train-run">🚇</div>
+            </div>
+            <p class="text-sub text-xs font-mono">최적의 중간역을 계산하는 중...</p>
+          </div>
+
+          <!-- Result -->
+          <div id="result-block" class="hidden-screen pop-in flex flex-col gap-4">
+            <div class="bg-gradient-to-br from-white to-surface2 border border-line rounded-2xl p-6 flex flex-col items-center text-center gap-2 relative">
+              <div class="w-14 h-14 rounded-full bg-lime/10 border-2 border-lime flex items-center justify-center text-2xl ring-pulse dot-float">📍</div>
+              <p class="text-xs text-sub font-mono mt-1">추천 중간역</p>
+              <h2 id="mid-station-name" class="font-display font-extrabold text-3xl text-lime">-</h2>
+              <p id="mid-station-desc" class="text-xs text-sub leading-relaxed"></p>
+            </div>
+
+            <div>
+              <p class="text-sm font-bold mb-3">📌 이 근처 추천 스팟 <span class="text-xs text-lime font-normal ml-1">(클릭하면 지도로 연결돼요!)</span></p>
+              <div id="recommend-list" class="flex flex-col gap-3"></div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      /* ============================================================
+       * 테마 전환 이벤트 처리
+       * ============================================================ */
+      const themeToggleBtn = document.getElementById('theme-toggle-btn');
+      if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', function () {
+          document.documentElement.classList.toggle('dark');
+        });
+      }
+
+      /* ============================================================
+       * 0. Supabase & Kakao API 연동 준비
+       * ============================================================ */
+      const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+      const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+      const KAKAO_REST_API_KEY = 'YOUR_KAKAO_REST_API_KEY';
+
+      let supabaseClient = null;
+      const useSupabase = SUPABASE_URL !== 'YOUR_SUPABASE_URL' && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
+      if (useSupabase && window.supabase) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+
+      const supaNote = document.getElementById('supabase-note');
+      supaNote.textContent = useSupabase
+        ? '🟢 Supabase에 연결되어 실시간으로 동기화돼요.'
+        : '🧪 로컬 테스트 모드예요 (같은 브라우저 새 탭에서 초대 링크를 열면 확인할 수 있어요).';
+
+      /* ============================================================
+       * 1. 수도권 주요 지하철역 좌표 데이터 (1~9호선 완벽 원본 복원)
+       * ============================================================ */
+      const STATIONS = {
+        /* 1호선 */
+        "연천": [38.1016, 127.0739],
+        "전곡": [38.0244, 127.0713],
+        "청산": [37.9950, 127.0743],
+        "소요산": [37.9480, 127.0612],
+        "동두천": [37.9276, 127.0548],
+        "보산": [37.9142, 127.0571],
+        "동두천중앙": [37.9018, 127.0565],
+        "지행": [37.8923, 127.0557],
+        "덕정": [37.8432, 127.0615],
+        "덕계": [37.8187, 127.0566],
+        "양주": [37.7742, 127.0447],
+        "녹양": [37.7594, 127.0422],
+        "가능": [37.7483, 127.0442],
+        "의정부": [37.7387, 127.0458],
+        "회룡": [37.7151, 127.0474],
+        "망월사": [37.6992, 127.0472],
+        "도봉산": [37.6892, 127.0462],
+        "도봉": [37.6796, 127.0455],
+        "방학": [37.6675, 127.0443],
+        "창동": [37.6532, 127.0477],
+        "녹천": [37.6447, 127.0486],
+        "월계": [37.6289, 127.0583],
+        "광운대": [37.6237, 127.0618],
+        "석계": [37.6148, 127.0658],
+        "신이문": [37.6034, 127.0619],
+        "외대앞": [37.5961, 127.0630],
+        "회기": [37.5895, 127.0578],
+        "청량리": [37.5802, 127.0468],
+        "제기동": [37.5782, 127.0349],
+        "신설동": [37.5753, 127.0248],
+        "동묘앞": [37.5733, 127.0166],
+        "동대문": [37.5714, 127.0098],
+        "종로5가": [37.5709, 127.0019],
+        "종로3가": [37.5704, 126.9919],
+        "종각": [37.5702, 126.9829],
+        "시청": [37.5657, 126.9769],
+        "서울역": [37.5547, 126.9707],
+        "남영": [37.5410, 126.9714],
+        "용산": [37.5299, 126.9648],
+        "노량진": [37.5142, 126.9425],
+        "대방": [37.5133, 126.9264],
+        "신길": [37.5171, 126.9172],
+        "영등포": [37.5158, 126.9076],
+        "신도림": [37.5088, 126.8912],
+        "구로": [37.5032, 126.8820],
+        "구일": [37.4967, 126.8730],
+        "개봉": [37.4946, 126.8587],
+        "오류동": [37.4945, 126.8453],
+        "온수": [37.4922, 126.8234],
+        "역곡": [37.4851, 126.8115],
+        "부천": [37.4841, 126.7827],
+        "중동": [37.4865, 126.7645],
+        "송내": [37.4876, 126.7533],
+        "부개": [37.4883, 126.7410],
+        "부평": [37.4895, 126.7248],
+        "백운": [37.4844, 126.7082],
+        "동암": [37.4714, 126.7029],
+        "간석": [37.4647, 126.6932],
+        "주안": [37.4649, 126.6799],
+        "도화": [37.4661, 126.6685],
+        "제물포": [37.4668, 126.6567],
+        "도원": [37.4684, 126.6429],
+        "동인천": [37.4750, 126.6328],
+        "인천": [37.4764, 126.6170],
+
+        "가산디지털단지": [37.4816, 126.8828],
+        "독산": [37.4664, 126.8892],
+        "금천구청": [37.4560, 126.8954],
+        "광명": [37.4162, 126.8848],
+        "석수": [37.4352, 126.9015],
+        "관악": [37.4192, 126.9084],
+        "안양": [37.4019, 126.9227],
+        "명학": [37.3848, 126.9355],
+        "금정": [37.3722, 126.9434],
+        "군포": [37.3533, 126.9483],
+        "당정": [37.3443, 126.9483],
+        "의왕": [37.3207, 126.9582],
+        "성균관대": [37.3003, 126.9707],
+        "화서": [37.2838, 126.9897],
+        "수원": [37.2658, 127.0001],
+        "세류": [37.2450, 127.0142],
+        "병점": [37.2067, 127.0331],
+        "서동탄": [37.1997, 127.0543],
+        "세마": [37.1873, 127.0431],
+        "오산대": [37.1691, 127.0601],
+        "오산": [37.1459, 127.0667],
+        "진위": [37.1094, 127.0614],
+        "송탄": [37.0754, 127.0545],
+        "서정리": [37.0565, 127.0526],
+        "평택지제": [37.0189, 127.0701],
+        "평택": [36.9910, 127.0857],
+        "성환": [36.9161, 127.1269],
+        "직산": [36.8706, 127.1437],
+        "두정": [36.8338, 127.1489],
+        "천안": [36.8091, 127.1462],
+        "봉명": [36.7998, 127.1374],
+        "쌍용": [36.7938, 127.1214],
+        "아산": [36.7902, 127.1044],
+        "탕정": [36.7883, 127.0841],
+        "배방": [36.7775, 127.0528],
+        "온양온천": [36.7806, 127.0018],
+        "신창": [36.7696, 126.9510],
+
+        /* 2호선 */
+        "까치산": [37.5318, 126.8467],
+        "신정네거리": [37.5201, 126.8529],
+        "양천구청": [37.5124, 126.8658],
+        "도림천": [37.5143, 126.8827],
+        "문래": [37.5180, 126.8948],
+        "영등포구청": [37.5255, 126.8967],
+        "당산": [37.5346, 126.9027],
+        "합정": [37.5495, 126.9137],
+        "홍대입구": [37.5572, 126.9254],
+        "신촌": [37.5552, 126.9369],
+        "이대": [37.5568, 126.9460],
+        "아현": [37.5574, 126.9561],
+        "충정로": [37.5599, 126.9637],
+        "을지로입구": [37.5660, 126.9822],
+        "을지로3가": [37.5663, 126.9913],
+        "을지로4가": [37.5666, 126.9978],
+        "동대문역사문화공원": [37.5651, 127.0078],
+        "신당": [37.5659, 127.0178],
+        "상왕십리": [37.5643, 127.0294],
+        "왕십리": [37.5613, 127.0374],
+        "한양대": [37.5553, 127.0436],
+        "뚝섬": [37.5471, 127.0474],
+        "성수": [37.5447, 127.0559],
+        "용답": [37.5619, 127.0508],
+        "신답": [37.5698, 127.0469],
+        "용두": [37.5740, 127.0381],
+        "건대입구": [37.5407, 127.0693],
+        "구의": [37.5370, 127.0860],
+        "강변": [37.5353, 127.0947],
+        "잠실나루": [37.5207, 127.1038],
+        "잠실": [37.5133, 127.1001],
+        "잠실새내": [37.5114, 127.0858],
+        "종합운동장": [37.5110, 127.0736],
+        "삼성": [37.5088, 127.0631],
+        "선릉": [37.5045, 127.0490],
+        "역삼": [37.5006, 127.0365],
+        "강남": [37.4979, 127.0276],
+        "교대": [37.4936, 127.0143],
+        "서초": [37.4918, 127.0077],
+        "방배": [37.4814, 126.9975],
+        "사당": [37.4766, 126.9816],
+        "낙성대": [37.4769, 126.9635],
+        "서울대입구": [37.4812, 126.9527],
+        "봉천": [37.4824, 126.9416],
+        "신림": [37.4842, 126.9296],
+        "신대방": [37.4876, 126.9133],
+        "구로디지털단지": [37.4852, 126.9013],
+        "대림": [37.4928, 126.8964],
+
+        /* 3호선 */
+        "대화": [37.6759, 126.7475],
+        "주엽": [37.6701, 126.7613],
+        "정발산": [37.6595, 126.7728],
+        "마두": [37.6522, 126.7776],
+        "백석": [37.6432, 126.7883],
+        "대곡": [37.6316, 126.8110],
+        "화정": [37.6346, 126.8326],
+        "원당": [37.6533, 126.8430],
+        "원흥": [37.6507, 126.8727],
+        "삼송": [37.6531, 126.8955],
+        "지축": [37.6481, 126.9138],
+        "구파발": [37.6366, 126.9188],
+        "연신내": [37.6186, 126.9209],
+        "불광": [37.6105, 126.9298],
+        "녹번": [37.6009, 126.9357],
+        "홍제": [37.5891, 126.9452],
+        "무악재": [37.5823, 126.9506],
+        "독립문": [37.5746, 126.9582],
+        "경복궁": [37.5758, 126.9736],
+        "안국": [37.5765, 126.9855],
+        "충무로": [37.5612, 126.9942],
+        "동대입구": [37.5591, 127.0054],
+        "약수": [37.5521, 127.0107],
+        "금호": [37.5482, 127.0158],
+        "옥수": [37.5407, 127.0177],
+        "압구정": [37.5271, 127.0285],
+        "신사": [37.5163, 127.0203],
+        "잠원": [37.5144, 127.0116],
+        "고속터미널": [37.5048, 127.0049],
+        "남부터미널": [37.4846, 127.0162],
+        "양재": [37.4842, 127.0343],
+        "매봉": [37.4869, 127.0467],
+        "도곡": [37.4909, 127.0554],
+        "대치": [37.4946, 127.0636],
+        "학여울": [37.4967, 127.0706],
+        "대청": [37.4938, 127.0795],
+        "일원": [37.4837, 127.0844],
+        "수서": [37.4874, 127.1014],
+        "가락시장": [37.4923, 127.1182],
+        "경찰병원": [37.4962, 127.1238],
+        "오금": [37.5021, 127.1283],
+
+        /* 4호선 */
+        "진접": [37.7183, 127.1895],
+        "오남": [37.7027, 127.1873],
+        "별내별가람": [37.6698, 127.1243],
+        "당고개": [37.6702, 127.0790],
+        "상계": [37.6608, 127.0728],
+        "노원": [37.6543, 127.0611],
+        "쌍문": [37.6480, 127.0347],
+        "수유": [37.6377, 127.0255],
+        "미아": [37.6262, 127.0258],
+        "미아사거리": [37.6133, 127.0300],
+        "길음": [37.6034, 127.0250],
+        "성신여대입구": [37.5929, 127.0164],
+        "한성대입구": [37.5883, 127.0059],
+        "혜화": [37.5822, 127.0018],
+        "명동": [37.5608, 126.9857],
+        "회현": [37.5585, 126.9782],
+        "숙대입구": [37.5446, 126.9721],
+        "삼각지": [37.5347, 126.9732],
+        "신용산": [37.5292, 126.9679],
+        "이촌": [37.5222, 126.9736],
+        "동작": [37.5028, 126.9747],
+        "총신대입구": [37.4862, 126.9816],
+        "남태령": [37.4638, 126.9892],
+        "선바위": [37.4517, 127.0028],
+        "경마공원": [37.4437, 127.0142],
+        "대공원": [37.4354, 127.0166],
+        "과천": [37.4330, 126.9967],
+        "정부과천청사": [37.4265, 126.9897],
+        "인덕원": [37.4012, 126.9768],
+        "평촌": [37.3943, 126.9639],
+        "범계": [37.3898, 126.9508],
+        "산본": [37.3582, 126.9331],
+        "수리산": [37.3498, 126.9254],
+        "대야미": [37.3282, 126.9171],
+        "반월": [37.3123, 126.9035],
+        "상록수": [37.3023, 126.8665],
+        "한대앞": [37.3097, 126.8534],
+        "중앙": [37.3158, 126.8386],
+        "고잔": [37.3168, 126.8233],
+        "초지": [37.3204, 126.8058],
+        "안산": [37.3270, 126.7888],
+        "신길온천": [37.3382, 126.7660],
+        "정왕": [37.3518, 126.7428],
+        "오이도": [37.3624, 126.7387],
+
+        /* 5호선 */
+        "방화": [37.5775, 126.8127],
+        "개화산": [37.5724, 126.8061],
+        "김포공항": [37.5624, 126.8013],
+        "송정": [37.5611, 126.8113],
+        "마곡": [37.5601, 126.8253],
+        "발산": [37.5583, 126.8374],
+        "우장산": [37.5488, 126.8362],
+        "화곡": [37.5416, 126.8404],
+        "신정": [37.5250, 126.8561],
+        "목동": [37.5265, 126.8641],
+        "오목교": [37.5245, 126.8752],
+        "양평": [37.5257, 126.8860],
+        "여의도": [37.5219, 126.9245],
+        "여의나루": [37.5271, 126.9329],
+        "마포": [37.5396, 126.9459],
+        "공덕": [37.5442, 126.9514],
+        "애오개": [37.5538, 126.9567],
+        "서대문": [37.5658, 126.9666],
+        "광화문": [37.5715, 126.9768],
+        "청구": [37.5567, 127.0158],
+        "신금호": [37.5544, 127.0204],
+        "행당": [37.5574, 127.0296],
+        "마장": [37.5661, 127.0429],
+        "답십리": [37.5650, 127.0548],
+        "장한평": [37.5614, 127.0646],
+        "군자": [37.5572, 127.0795],
+        "아차산": [37.5494, 127.0897],
+        "광나루": [37.5453, 127.1036],
+        "천호": [37.5386, 127.1235],
+        "강동": [37.5358, 127.1324],
+        "길동": [37.5378, 127.1401],
+        "굽은다리": [37.5455, 127.1428],
+        "명일": [37.5514, 127.1439],
+        "고덕": [37.5550, 127.1541],
+        "상일동": [37.5568, 127.1663],
+        "강일": [37.5574, 127.1759],
+        "미사": [37.5609, 127.1938],
+        "하남풍산": [37.5508, 127.2038],
+        "하남시청": [37.5393, 127.2144],
+        "하남검단산": [37.5300, 127.2241],
+        "둔촌동": [37.5278, 127.1362],
+        "올림픽공원": [37.5161, 127.1307],
+        "방이": [37.5088, 127.1261],
+        "개롱": [37.4934, 127.1350],
+        "거여": [37.4931, 127.1441],
+        "마천": [37.4949, 127.1528],
+
+        /* 6호선 */
+        "응암": [37.5986, 126.9155],
+        "역촌": [37.6060, 126.9227],
+        "독바위": [37.6184, 126.9329],
+        "구산": [37.6114, 126.9172],
+        "새절": [37.5911, 126.9136],
+        "증산": [37.5838, 126.9096],
+        "디지털미디어시티": [37.5767, 126.9013],
+        "월드컵경기장": [37.5699, 126.8990],
+        "마포구청": [37.5634, 126.9034],
+        "망원": [37.5560, 126.9101],
+        "상수": [37.5477, 126.9229],
+        "광흥창": [37.5474, 126.9319],
+        "대흥": [37.5477, 126.9423],
+        "효창공원앞": [37.5392, 126.9613],
+        "녹사평": [37.5347, 126.9867],
+        "이태원": [37.5344, 126.9946],
+        "한강진": [37.5396, 127.0017],
+        "버티고개": [37.5480, 127.0070],
+        "창신": [37.5796, 127.0152],
+        "안암": [37.5863, 127.0291],
+        "고려대": [37.5904, 127.0358],
+        "월곡": [37.6019, 127.0415],
+        "상월곡": [37.6063, 127.0484],
+        "돌곶이": [37.6105, 127.0564],
+        "화랑대": [37.6201, 127.0837],
+        "봉화산": [37.6172, 127.0914],
+        "신내": [37.6181, 127.1026],
+
+        /* 7호선 */
+        "장암": [37.7002, 127.0532],
+        "마들": [37.6649, 127.0577],
+        "중계": [37.6446, 127.0644],
+        "하계": [37.6364, 127.0679],
+        "공릉": [37.6257, 127.0729],
+        "먹골": [37.6108, 127.0778],
+        "중화": [37.6023, 127.0792],
+        "상봉": [37.5966, 127.0854],
+        "면목": [37.5886, 127.0875],
+        "사가정": [37.5800, 127.0886],
+        "용마산": [37.5737, 127.0868],
+        "중곡": [37.5659, 127.0844],
+        "어린이대공원": [37.5480, 127.0746],
+        "자양": [37.5315, 127.0664],
+        "청담": [37.5193, 127.0534],
+        "강남구청": [37.5172, 127.0413],
+        "학동": [37.5142, 127.0316],
+        "논현": [37.5111, 127.0215],
+        "반포": [37.5082, 127.0117],
+        "내방": [37.4876, 126.9934],
+        "숭실대입구": [37.4960, 126.9537],
+        "상도": [37.5029, 126.9478],
+        "장승배기": [37.5049, 126.9388],
+        "신대방삼거리": [37.4997, 126.9281],
+        "보라매": [37.4998, 126.9202],
+        "신풍": [37.5060, 126.9096],
+        "남구로": [37.4862, 126.8872],
+        "철산": [37.4760, 126.8679],
+        "광명사거리": [37.4793, 126.8548],
+        "천왕": [37.4867, 126.8387],
+        "까치울": [37.5061, 126.8109],
+        "부천종합운동장": [37.5053, 126.7973],
+        "춘의": [37.5037, 126.7867],
+        "신중동": [37.5030, 126.7759],
+        "부천시청": [37.5046, 126.7635],
+        "상동": [37.5058, 126.7531],
+        "삼산체육관": [37.5064, 126.7423],
+        "굴포천": [37.5069, 126.7315],
+        "부평구청": [37.5084, 126.7206],
+        "산곡": [37.5086, 126.7034],
+        "석남": [37.5067, 126.6761],
+
+        /* 8호선 */
+        "별내": [37.6425, 127.1268],
+        "다산": [37.6256, 127.1528],
+        "동구릉": [37.6083, 127.1432],
+        "구리": [37.6034, 127.1438],
+        "장자호수공원": [37.5872, 127.1378],
+        "암사역사공원": [37.5623, 127.1332],
+        "암사": [37.5502, 127.1275],
+        "강동구청": [37.5304, 127.1205],
+        "몽촌토성": [37.5174, 127.1126],
+        "석촌": [37.5054, 127.1069],
+        "석촌고분": [37.5025, 127.0966],
+        "송파": [37.4997, 127.1122],
+        "문정": [37.4859, 127.1225],
+        "장지": [37.4787, 127.1262],
+        "복정": [37.4700, 127.1267],
+        "남위례": [37.4632, 127.1384],
+        "산성": [37.4571, 127.1499],
+        "남한산성입구": [37.4515, 127.1598],
+        "단대오거리": [37.4452, 127.1568],
+        "신흥": [37.4409, 127.1475],
+        "수진": [37.4374, 127.1408],
+        "모란": [37.4321, 127.1290],
+
+        /* 9호선 */
+        "개화": [37.5786, 126.7981],
+        "공항화물청사": [37.5518, 126.8016],
+        "공항시장": [37.5637, 126.8106],
+        "신방화": [37.5675, 126.8166],
+        "마곡나루": [37.5668, 126.8273],
+        "양천향교": [37.5671, 126.8403],
+        "가양": [37.5615, 126.8545],
+        "증미": [37.5574, 126.8619],
+        "등촌": [37.5507, 126.8656],
+        "염창": [37.5468, 126.8748],
+        "신목동": [37.5442, 126.8831],
+        "선유도": [37.5381, 126.8933],
+        "국회의사당": [37.5318, 126.9142],
+        "샛강": [37.5173, 126.9284],
+        "노들": [37.5129, 126.9532],
+        "흑석": [37.5088, 126.9637],
+        "구반포": [37.5014, 126.9874],
+        "신반포": [37.5034, 126.9959],
+        "사평": [37.5043, 127.0153],
+        "신논현": [37.5045, 127.0254],
+        "언주": [37.5073, 127.0338],
+        "선정릉": [37.5103, 127.0439],
+        "삼성중앙": [37.5130, 127.0532],
+        "봉은사": [37.5142, 127.0602],
+        "삼전": [37.5048, 127.0872],
+        "송파나루": [37.5101, 127.1130],
+        "한성백제": [37.5164, 127.1182],
+        "둔촌오륜": [37.5179, 127.1402],
+        "중앙보훈병원": [37.5286, 127.1479]
+      };
+      const HOTSPOT_FALLBACK = ["홍대입구", "건대입구", "신촌"];
+
+      const stationListEl = document.getElementById('station-list');
+      Object.keys(STATIONS).forEach((name) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        stationListEl.appendChild(opt);
+      });
+
+      function haversine(a, b) {
+        const R = 6371;
+        const dLat = (b[0] - a[0]) * Math.PI / 180;
+        const dLng = (b[1] - a[1]) * Math.PI / 180;
+        const lat1 = a[0] * Math.PI / 180, lat2 = b[0] * Math.PI / 180;
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.asin(Math.sqrt(h));
+      }
+
+      function findMidpointStation(stationNames) {
+        const coords = stationNames
+          .map((n) => {
+            const cleanName = n.trim().replace(/역$/, '');
+            return STATIONS[cleanName] || STATIONS[n.trim()];
+          })
+          .filter(Boolean);
+
+        if (coords.length === 0) {
+          const pick = HOTSPOT_FALLBACK[Math.floor(Math.random() * HOTSPOT_FALLBACK.length)];
+          return { name: pick, note: '정확한 위치 정보가 부족해 요즘 뜨는 핫플레이스로 추천해 드려요.' };
+        }
+
+        const centroid = [
+          coords.reduce((s, c) => s + c[0], 0) / coords.length,
+          coords.reduce((s, c) => s + c[1], 0) / coords.length,
+        ];
+
+        let best = null, bestDist = Infinity;
+        Object.entries(STATIONS).forEach(([name, coord]) => {
+          const d = haversine(centroid, coord);
+          if (d < bestDist) { bestDist = d; best = name; }
+        });
+
+        const displayDist = bestDist < 0.1 ? '0.1km 미만' : `약 ${bestDist.toFixed(1)}km`;
+
+        return { 
+          name: best, 
+          note: `참여자들의 평균 위치에서 ${displayDist} 거리에 있어, 이동 시간이 가장 공평해요.` 
+        };
+      }
+
+      /* ============================================================
+       * 1-2. 실제 역 주변 장소 정보 가져오기 (카카오 API & 네이버 연동)
+       * ============================================================ */
+      async function fetchRealPlace(stationName, categoryKeyword) {
+        const stationWithSuff = stationName.endsWith('역') ? stationName : `${stationName}역`;
+        const query = `${stationWithSuff} ${categoryKeyword}`;
+
+        if (KAKAO_REST_API_KEY && KAKAO_REST_API_KEY !== 'YOUR_KAKAO_REST_API_KEY') {
+          try {
+            const res = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(query)}&size=1`, {
+              headers: { Authorization: `KakaoAK ${KAKAO_REST_API_KEY}` }
+            });
+            const data = await res.json();
+            if (data.documents && data.documents.length > 0) {
+              const place = data.documents[0];
+              return {
+                name: place.place_name,
+                desc: `${place.category_name.split('>').pop() || '상점'} · ${place.address_name}`,
+                url: place.place_url
+              };
+            }
+          } catch (e) {
+            console.error("장소 검색 연동 중 예외 발생:", e);
+          }
+        }
+
+        // API 연동 전/실패 시 네이버 지도 실제 검색 링크 제공
+        return {
+          name: `${stationWithSuff} 추천 ${categoryKeyword}`,
+          desc: `네이버 지도로 바로 연결되어 ${stationWithSuff} 근처의 실제 ${categoryKeyword} 정보를 둘러봅니다.`,
+          url: `https://map.naver.com/v5/search/${encodeURIComponent(query)}`
+        };
+      }
+
+      /* ============================================================
+       * 2. 상태 관리 + 로컬(Mock) 저장소
+       * ============================================================ */
+      function genRoomCode() {
+        const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        let out = '';
+        for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+        return out;
+      }
+
+      const state = {
+        roomCode: null,
+        roomName: '',
+        category: '맛집 투어',
+        participants: [],
+      };
+
+      const LS_KEY = (code) => `wjm_room_v1_${code}`;
+
+      function saveRoomLocal() {
+        localStorage.setItem(LS_KEY(state.roomCode), JSON.stringify({
+          name: state.roomName,
+          category: state.category,
+          participants: state.participants,
+        }));
+      }
+
+      function loadRoomLocal(code) {
+        try {
+          const raw = localStorage.getItem(LS_KEY(code));
+          return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+      }
+
+      /* ============================================================
+       * 3. 화면 전환
+       * ============================================================ */
+      const screens = {
+        1: document.getElementById('screen-1'),
+        2: document.getElementById('screen-2'),
+        3: document.getElementById('screen-3'),
+      };
+      
+      function showScreen(n) {
+        Object.entries(screens).forEach(([k, el]) => {
+          if (Number(k) === n) {
+            el.classList.remove('hidden-screen');
+            el.classList.add('flex', 'screen-enter');
+            requestAnimationFrame(() => el.classList.remove('screen-enter'));
+          } else {
+            el.classList.add('hidden-screen');
+            el.classList.remove('flex');
+          }
+        });
+        document.querySelectorAll('.step-dot').forEach((dot) => {
+          const step = Number(dot.dataset.step);
+          dot.classList.toggle('bg-lime', step <= n);
+          dot.classList.toggle('bg-line', step > n);
+        });
+      }
+
+      /* ============================================================
+       * 4. 화면 1 : 방 만들기
+       * ============================================================ */
+      let selectedCategory = null;
+      document.getElementById('category-chips').addEventListener('click', (e) => {
+        const btn = e.target.closest('.chip');
+        if (!btn) return;
+        document.querySelectorAll('#category-chips .chip').forEach((c) => c.dataset.selected = 'false');
+        btn.dataset.selected = 'true';
+        selectedCategory = btn.dataset.value;
+      });
+
+      document.getElementById('create-room-btn').addEventListener('click', async () => {
+        const nameInput = document.getElementById('room-name');
+        const name = nameInput.value.trim();
+        if (!name) { nameInput.focus(); nameInput.classList.add('border-pink'); return; }
+        if (!selectedCategory) { alert('약속 카테고리를 선택해주세요.'); return; }
+
+        state.roomCode = genRoomCode();
+        state.roomName = name;
+        state.category = selectedCategory;
+        state.participants = [];
+
+        if (useSupabase && supabaseClient) {
+          await supabaseClient.from('rooms').insert({ id: state.roomCode, name, category: selectedCategory });
+        } else {
+          saveRoomLocal();
+        }
+
+        document.getElementById('room-code-display').textContent = state.roomCode;
+        document.getElementById('invite-panel').classList.remove('hidden-screen');
+        document.getElementById('create-room-btn').disabled = true;
+      });
+
+      document.getElementById('copy-link-btn').addEventListener('click', async () => {
+        const url = `${location.origin}${location.pathname}?room=${state.roomCode}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          const btn = document.getElementById('copy-link-btn');
+          const original = btn.textContent;
+          btn.textContent = '✅ 링크가 복사됐어요!';
+          setTimeout(() => (btn.textContent = original), 1600);
+        } catch (e) {
+          prompt('아래 링크를 복사하세요', url);
+        }
+      });
+
+      document.getElementById('goto-screen2-btn').addEventListener('click', () => {
+        document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
+        showScreen(2);
+      });
+
+      /* ============================================================
+       * 5. 화면 2 : 참여자 정보 입력
+       * ============================================================ */
+      document.getElementById('register-btn').addEventListener('click', async () => {
+        const nickInput = document.getElementById('nickname-input');
+        const stationInput = document.getElementById('station-input');
+        const nickname = nickInput.value.trim();
+        const station = stationInput.value.trim();
+
+        if (!nickname) { nickInput.focus(); return; }
+        if (!station) { stationInput.focus(); return; }
+
+        const participant = { nickname, station, ts: Date.now() };
+
+        if (useSupabase && supabaseClient) {
+          await supabaseClient.from('participants').insert({
+            room_id: state.roomCode, nickname, station,
+          });
+        } else {
+          const room = loadRoomLocal(state.roomCode) || { name: state.roomName, category: state.category, participants: [] };
+          room.participants.push(participant);
+          state.participants = room.participants;
+          localStorage.setItem(LS_KEY(state.roomCode), JSON.stringify(room));
+        }
+
+        document.getElementById('result-room-title').textContent = `"${state.roomName}" 모임`;
+        showScreen(3);
+        startParticipantSync();
+      });
+
+      /* ============================================================
+       * 6. 화면 3 : 실시간 참여자 목록 + 중간역 계산
+       * ============================================================ */
+      const dotColors = ['bg-[#48BB0D]', 'bg-[#FF4D8D]', 'bg-[#4DD8FF]', 'bg-[#FFC24D]'];
+      function colorFor(nickname) {
+        let hash = 0;
+        for (let i = 0; i < nickname.length; i++) hash = nickname.charCodeAt(i) + ((hash << 5) - hash);
+        return dotColors[Math.abs(hash) % dotColors.length];
+      }
+
+      function renderParticipants(list) {
+        state.participants = list;
+        const wrap = document.getElementById('participants-list');
+        document.getElementById('participant-count').textContent = `${list.length}명`;
+        wrap.innerHTML = '';
+
+        if (list.length === 0) {
+          wrap.innerHTML = `<p class="text-sub text-xs py-6 text-center">아직 등록된 친구가 없어요. 초대 링크를 공유해보세요!</p>`;
+          return;
+        }
+
+        list.slice().sort((a, b) => a.ts - b.ts).forEach((p, i) => {
+          const row = document.createElement('div');
+          row.className = 'relative flex items-center gap-3 bg-surface2 border border-line rounded-2xl px-4 py-3 pop-in text-ink';
+          row.style.animationDelay = `${i * 0.05}s`;
+          row.innerHTML = `
+            <span class="absolute -left-8 w-3 h-3 rounded-full ${colorFor(p.nickname)} ring-4 ring-surface"></span>
+            <div class="w-9 h-9 rounded-full ${colorFor(p.nickname)} border border-line flex items-center justify-center text-sm font-bold text-white shrink-0">
+              ${p.nickname.slice(0, 1)}
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold truncate">${p.nickname}</p>
+              <p class="text-xs text-sub font-mono">${p.station}</p>
+            </div>
+          `;
+          wrap.appendChild(row);
+        });
+      }
+
+      let pollTimer = null;
+      let lastSignature = '';
+      function startParticipantSync() {
+        if (useSupabase && supabaseClient) {
+          supabaseClient.from('participants').select('*').eq('room_id', state.roomCode).order('created_at')
+            .then(({ data }) => renderParticipants((data || []).map(d => ({ nickname: d.nickname, station: d.station, ts: new Date(d.created_at).getTime() }))));
+
+          supabaseClient.channel(`room-${state.roomCode}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'participants', filter: `room_id=eq.${state.roomCode}` }, (payload) => {
+              const p = payload.new;
+              renderParticipants([...state.participants, { nickname: p.nickname, station: p.station, ts: Date.now() }]);
+            })
+            .subscribe();
+        } else {
+          const sync = () => {
+            const room = loadRoomLocal(state.roomCode);
+            const list = room ? room.participants : [];
+            const sig = JSON.stringify(list);
+            if (sig !== lastSignature) {
+              lastSignature = sig;
+              renderParticipants(list);
+            }
+          };
+          sync();
+          if (!pollTimer) {
+            pollTimer = setInterval(sync, 1500);
+            window.addEventListener('storage', (e) => {
+              if (e.key === LS_KEY(state.roomCode)) sync();
+            });
+          }
+        }
+      }
+
+      document.getElementById('find-mid-btn').addEventListener('click', async () => {
+        if (state.participants.length === 0) {
+          alert('아직 참여자가 없어요. 먼저 출발역을 등록해주세요!');
+          return;
+        }
+        document.getElementById('find-mid-btn').classList.add('hidden-screen');
+        
+        const loadingBlock = document.getElementById('loading-block');
+        loadingBlock.classList.remove('hidden-screen');
+        loadingBlock.classList.add('flex');
+
+        const stationNames = state.participants.map((p) => p.station);
+        const result = findMidpointStation(stationNames);
+        const stationWithSuff = result.name.endsWith('역') ? result.name : `${result.name}역`;
+
+        let spot1, spot2, spot3, recs = [];
+
+        // 네이버 지도로 역 자체만 연결
+        const searchStationUrl = `https://map.naver.com/v5/search/${encodeURIComponent(stationWithSuff)}`;
+
+        // 선택된 카테고리에 따른 추천 스팟 구성
+        if (state.category === '카공') {
+          spot1 = await fetchRealPlace(result.name, '스터디카페');
+          spot2 = await fetchRealPlace(result.name, '카페');
+          recs = [
+            { emoji: '📚', name: spot1.name, desc: spot1.desc, url: spot1.url },
+            { emoji: '☕', name: spot2.name, desc: spot2.desc, url: spot2.url },
+            { 
+              emoji: '🔍', 
+              name: `${stationWithSuff} 근처 찾아보기`, 
+              desc: `네이버 지도로 연결되어 ${stationWithSuff} 근처의 모든 스팟을 살펴봅니다.`, 
+              url: searchStationUrl 
+            }
+          ];
+        } else if (state.category === '술자리') {
+          spot1 = await fetchRealPlace(result.name, '술집');
+          spot2 = await fetchRealPlace(result.name, '해장국');
+          recs = [
+            { emoji: '🍻', name: spot1.name, desc: spot1.desc, url: spot1.url },
+            { emoji: '🍲', name: spot2.name, desc: spot2.desc, url: spot2.url },
+            { 
+              emoji: '🔍', 
+              name: `${stationWithSuff} 근처 찾아보기`, 
+              desc: `네이버 지도로 연결되어 ${stationWithSuff} 근처의 모든 스팟을 살펴봅니다.`, 
+              url: searchStationUrl 
+            }
+          ];
+        } else if (state.category === '기타') {
+          // 기타 : 1. 맛집 2. 카페 3. 놀거리 4. 근처 찾아보기
+          spot1 = await fetchRealPlace(result.name, '맛집');
+          spot2 = await fetchRealPlace(result.name, '카페');
+          spot3 = await fetchRealPlace(result.name, '놀거리');
+          recs = [
+            { emoji: '🍜', name: spot1.name, desc: spot1.desc, url: spot1.url },
+            { emoji: '🍰', name: spot2.name, desc: spot2.desc, url: spot2.url },
+            { emoji: '🎮', name: spot3.name, desc: spot3.desc, url: spot3.url },
+            { 
+              emoji: '🔍', 
+              name: `${stationWithSuff} 근처 찾아보기`, 
+              desc: `네이버 지도로 연결되어 ${stationWithSuff} 근처의 모든 스팟을 살펴봅니다.`, 
+              url: searchStationUrl 
+            }
+          ];
+        } else {
+          // '맛집 투어' 기본 추천
+          spot1 = await fetchRealPlace(result.name, '맛집');
+          spot2 = await fetchRealPlace(result.name, '카페');
+          recs = [
+            { emoji: '🍜', name: spot1.name, desc: spot1.desc, url: spot1.url },
+            { emoji: '🍰', name: spot2.name, desc: spot2.desc, url: spot2.url },
+            { 
+              emoji: '🔍', 
+              name: `${stationWithSuff} 근처 찾아보기`, 
+              desc: `네이버 지도로 연결되어 ${stationWithSuff} 근처의 모든 스팟을 살펴봅니다.`, 
+              url: searchStationUrl 
+            }
+          ];
+        }
+
+        loadingBlock.classList.remove('flex');
+        loadingBlock.classList.add('hidden-screen');
+        
+        document.getElementById('result-block').classList.remove('hidden-screen');
+        document.getElementById('mid-station-name').textContent = result.name;
+        document.getElementById('mid-station-desc').textContent = result.note;
+
+        const recWrap = document.getElementById('recommend-list');
+        recWrap.innerHTML = '';
+
+        recs.forEach((r, i) => {
+          const card = document.createElement('a');
+          card.href = r.url;
+          card.target = '_blank';
+          card.rel = 'noopener noreferrer';
+          card.className = 'pop-in bg-surface2 border border-line rounded-2xl p-4 flex items-center justify-between gap-3 hover:scale-[1.01] hover:border-lime/30 transition-all cursor-pointer group';
+          card.style.animationDelay = `${i * 0.08}s`;
+          card.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-11 h-11 rounded-xl bg-white border border-line flex items-center justify-center text-xl shrink-0">${r.emoji}</div>
+              <div class="min-w-0 text-ink">
+                <p class="text-sm font-semibold truncate group-hover:text-lime transition-colors">${r.name}</p>
+                <p class="text-xs text-sub truncate">${r.desc}</p>
+              </div>
+            </div>
+            <div class="text-[10px] text-lime font-mono bg-lime/10 px-2.5 py-1 rounded-lg shrink-0 border border-lime/20 group-hover:bg-lime group-hover:text-white transition-all">
+              검색하기 ↗
+            </div>
+          `;
+          recWrap.appendChild(card);
+        });
+      });
+
+      /* ============================================================
+       * 7. 초대 링크로 진입한 경우 자동으로 참여 화면으로 이동
+       * ============================================================ */
+      async function initFromUrl() {
+        const params = new URLSearchParams(location.search);
+        const code = params.get('room');
+        if (!code) { showScreen(1); return; }
+
+        state.roomCode = code;
+
+        if (useSupabase && supabaseClient) {
+          const { data } = await supabaseClient.from('rooms').select('*').eq('id', code).single();
+          if (data) {
+            state.roomName = data.name;
+            state.category = data.category;
+          } else {
+            state.roomName = '알 수 없는 모임';
+            state.category = '기타';
+          }
+        } else {
+          const room = loadRoomLocal(code);
+          if (room) {
+            state.roomName = room.name;
+            state.category = room.category;
+            state.participants = room.participants || [];
+          } else {
+            state.roomName = '알 수 없는 모임';
+            state.category = '기타';
+          }
+        }
+
+        document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
+        showScreen(2);
+      }
+
+      initFromUrl();
+    })();
+  </script>
+</body>
+</html>
