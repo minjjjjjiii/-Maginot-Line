@@ -290,8 +290,6 @@
               다음(참여하기) 단계로 이동 →
             </button>
           </div>
-
-          <p id="supabase-note" class="text-[11px] text-sub/70 text-center mt-1"></p>
         </section>
 
         <!-- ===================== SCREEN 2 : 참여자 - 정보 입력 ===================== -->
@@ -397,11 +395,6 @@
       if (useSupabase && window.supabase) {
         supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       }
-
-      const supaNote = document.getElementById('supabase-note');
-      supaNote.textContent = useSupabase
-        ? '🟢 Supabase에 연결되어 실시간으로 동기화돼요.'
-        : '🧪 로컬 테스트 모드예요 (같은 브라우저 새 탭에서 초대 링크를 열면 확인할 수 있어요).';
 
       /* ============================================================
        * 1. 수도권 주요 지하철역 좌표 데이터 (1~9호선 완벽 원본 복원)
