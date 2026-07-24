@@ -352,10 +352,16 @@
             <div id="participants-list" class="flex flex-col gap-3"></div>
           </div>
 
+          <!-- 방장 전용 중간 지점 찾기 버튼 -->
           <button id="find-mid-btn"
-            class="w-full bg-lime text-white font-bold rounded-2xl py-4 text-sm active:scale-[0.98] transition-transform mt-1">
+            class="w-full bg-lime text-white font-bold rounded-2xl py-4 text-sm active:scale-[0.98] transition-transform mt-1 hidden-screen">
             우리의 중간 지점은? 🎯
           </button>
+
+          <!-- 일반 참여자 안내 텍스트 -->
+          <p id="guest-waiting-msg" class="text-center text-xs text-sub font-mono py-3 hidden-screen bg-surface2 rounded-xl border border-line">
+            ⏳ 방장이 중간 지점 계산을 누르면 결과가 표시됩니다.
+          </p>
 
           <!-- Loading -->
           <div id="loading-block" class="hidden-screen flex-col items-center gap-4 py-8">
@@ -919,7 +925,7 @@
       }
 
       /* ============================================================
-       * 2. 상태 관리 + 로컬(Mock) 저장소
+       * 2. 상태 관리 + 로컬(Mock) 저장소 및 권한 처리
        * ============================================================ */
       function genRoomCode() {
         const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -933,15 +939,25 @@
         roomName: '',
         category: '맛집 투어',
         participants: [],
+        isHost: false,
+        isCalculated: false,
+        midResult: null
       };
 
       const LS_KEY = (code) => `wjm_room_v1_${code}`;
+
+      function isHostForRoom(code) { return localStorage.getItem(`host_of_${code}`) === 'true'; }
+      function setHostForRoom(code) { localStorage.setItem(`host_of_${code}`, 'true'); }
+      function hasJoinedRoom(code) { return localStorage.getItem(`joined_${code}`) === 'true'; }
+      function setJoinedRoom(code) { localStorage.setItem(`joined_${code}`, 'true'); }
 
       function saveRoomLocal() {
         localStorage.setItem(LS_KEY(state.roomCode), JSON.stringify({
           name: state.roomName,
           category: state.category,
           participants: state.participants,
+          isCalculated: state.isCalculated,
+          midResult: state.midResult
         }));
       }
 
@@ -979,20 +995,20 @@
         });
       }
 
-      /* [수정 반영 1] 로고/텍스트 클릭 시 첫 화면으로 이동하는 함수 */
       function resetToHome() {
         state.roomCode = null;
         state.roomName = '';
         state.category = '맛집 투어';
         state.participants = [];
+        state.isHost = false;
+        state.isCalculated = false;
+        state.midResult = null;
         
-        // URL 쿼리 파라미터 제거
         if (window.history.pushState) {
           const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
           window.history.pushState({path: cleanUrl}, '', cleanUrl);
         }
 
-        // 입력 폼 초기화
         const roomNameInput = document.getElementById('room-name');
         if (roomNameInput) {
           roomNameInput.value = '';
@@ -1001,7 +1017,6 @@
         document.querySelectorAll('#category-chips .chip').forEach((c) => c.dataset.selected = 'false');
         selectedCategory = null;
 
-        // 초대 패널 숨기고 생성 버튼 다시 활성화
         document.getElementById('invite-panel').classList.add('hidden-screen');
         document.getElementById('create-room-btn').disabled = false;
 
@@ -1036,9 +1051,11 @@
         state.roomName = name;
         state.category = selectedCategory;
         state.participants = [];
+        state.isHost = true;
+        setHostForRoom(state.roomCode);
 
         if (useSupabase && supabaseClient) {
-          await supabaseClient.from('rooms').insert({ id: state.roomCode, name, category: selectedCategory });
+          await supabaseClient.from('rooms').insert({ id: state.roomCode, name, category: selectedCategory, is_calculated: false });
         } else {
           saveRoomLocal();
         }
@@ -1061,21 +1078,25 @@
         }
       });
 
-      /* [수정 반영 2] 약속 방이 만들어진 후일 때만 2단계로 이동 */
       document.getElementById('goto-screen2-btn').addEventListener('click', () => {
         if (!state.roomCode) {
           alert('약속 방을 먼저 생성해 주세요!');
           return;
         }
-        document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
-        showScreen(2);
+        if (hasJoinedRoom(state.roomCode)) {
+          document.getElementById('result-room-title').textContent = `"${state.roomName}" 모임`;
+          showScreen(3);
+          startParticipantSync();
+        } else {
+          document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
+          showScreen(2);
+        }
       });
 
       /* ============================================================
        * 5. 화면 2 : 참여자 정보 입력
        * ============================================================ */
       document.getElementById('register-btn').addEventListener('click', async () => {
-        /* [수정 반영 2] 방이 없는 상태에서 접근 불가 검증 */
         if (!state.roomCode) {
           alert('약속 방 정보가 존재하지 않습니다. 첫 화면에서 방을 먼저 만들어주세요!');
           showScreen(1);
@@ -1100,16 +1121,17 @@
           const room = loadRoomLocal(state.roomCode) || { name: state.roomName, category: state.category, participants: [] };
           room.participants.push(participant);
           state.participants = room.participants;
-          localStorage.setItem(LS_KEY(state.roomCode), JSON.stringify(room));
+          saveRoomLocal();
         }
 
+        setJoinedRoom(state.roomCode);
         document.getElementById('result-room-title').textContent = `"${state.roomName}" 모임`;
         showScreen(3);
         startParticipantSync();
       });
 
       /* ============================================================
-       * 6. 화면 3 : 실시간 참여자 목록 + 중간역 계산
+       * 6. 화면 3 : 실시간 참여자 목록 + 중간역 계산 UI
        * ============================================================ */
       const dotColors = ['bg-[#48BB0D]', 'bg-[#FF4D8D]', 'bg-[#4DD8FF]', 'bg-[#FFC24D]'];
       function colorFor(nickname) {
@@ -1147,9 +1169,67 @@
         });
       }
 
+      function updateUIControls() {
+        const findMidBtn = document.getElementById('find-mid-btn');
+        const guestMsg = document.getElementById('guest-waiting-msg');
+
+        if (state.isCalculated) {
+          findMidBtn.classList.add('hidden-screen');
+          guestMsg.classList.add('hidden-screen');
+          if (state.midResult) renderMidResultUI(state.midResult);
+        } else {
+          if (state.isHost) {
+            findMidBtn.classList.remove('hidden-screen');
+            guestMsg.classList.add('hidden-screen');
+          } else {
+            findMidBtn.classList.add('hidden-screen');
+            guestMsg.classList.remove('hidden-screen');
+          }
+        }
+      }
+
+      function renderMidResultUI(resultData) {
+        document.getElementById('find-mid-btn').classList.add('hidden-screen');
+        document.getElementById('guest-waiting-msg').classList.add('hidden-screen');
+        document.getElementById('loading-block').classList.add('hidden-screen');
+        
+        const resultBlock = document.getElementById('result-block');
+        resultBlock.classList.remove('hidden-screen');
+        
+        document.getElementById('mid-station-name').textContent = resultData.stationName;
+        document.getElementById('mid-station-desc').textContent = resultData.note;
+
+        const recWrap = document.getElementById('recommend-list');
+        recWrap.innerHTML = '';
+
+        resultData.recs.forEach((r, i) => {
+          const card = document.createElement('a');
+          card.href = r.url;
+          card.target = '_blank';
+          card.rel = 'noopener noreferrer';
+          card.className = 'pop-in bg-surface2 border border-line rounded-2xl p-4 flex items-center justify-between gap-3 hover:scale-[1.01] hover:border-lime/30 transition-all cursor-pointer group';
+          card.style.animationDelay = `${i * 0.08}s`;
+          card.innerHTML = `
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-11 h-11 rounded-xl bg-white border border-line flex items-center justify-center text-xl shrink-0">${r.emoji}</div>
+              <div class="min-w-0 text-ink">
+                <p class="text-sm font-semibold truncate group-hover:text-lime transition-colors">${r.name}</p>
+                <p class="text-xs text-sub truncate">${r.desc}</p>
+              </div>
+            </div>
+            <div class="text-[10px] text-lime font-mono bg-lime/10 px-2.5 py-1 rounded-lg shrink-0 border border-lime/20 group-hover:bg-lime group-hover:text-white transition-all">
+              검색하기 ↗
+            </div>
+          `;
+          recWrap.appendChild(card);
+        });
+      }
+
       let pollTimer = null;
       let lastSignature = '';
       function startParticipantSync() {
+        updateUIControls();
+
         if (useSupabase && supabaseClient) {
           supabaseClient.from('participants').select('*').eq('room_id', state.roomCode).order('created_at')
             .then(({ data }) => renderParticipants((data || []).map(d => ({ nickname: d.nickname, station: d.station, ts: new Date(d.created_at).getTime() }))));
@@ -1159,15 +1239,30 @@
               const p = payload.new;
               renderParticipants([...state.participants, { nickname: p.nickname, station: p.station, ts: Date.now() }]);
             })
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${state.roomCode}` }, (payload) => {
+              const updatedRoom = payload.new;
+              if (updatedRoom.is_calculated) {
+                state.isCalculated = true;
+                state.midResult = updatedRoom.mid_result;
+                renderMidResultUI(state.midResult);
+              }
+            })
             .subscribe();
         } else {
           const sync = () => {
             const room = loadRoomLocal(state.roomCode);
-            const list = room ? room.participants : [];
-            const sig = JSON.stringify(list);
-            if (sig !== lastSignature) {
-              lastSignature = sig;
-              renderParticipants(list);
+            if (room) {
+              const list = room.participants || [];
+              const sig = JSON.stringify(list);
+              if (sig !== lastSignature) {
+                lastSignature = sig;
+                renderParticipants(list);
+              }
+              if (room.isCalculated && !state.isCalculated) {
+                state.isCalculated = true;
+                state.midResult = room.midResult;
+                renderMidResultUI(state.midResult);
+              }
             }
           };
           sync();
@@ -1181,12 +1276,16 @@
       }
 
       document.getElementById('find-mid-btn').addEventListener('click', async () => {
+        if (!state.isHost) {
+          alert('방장만 중간 지점을 계산할 수 있습니다.');
+          return;
+        }
         if (state.participants.length === 0) {
           alert('아직 참여자가 없어요. 먼저 출발역을 등록해주세요!');
           return;
         }
+
         document.getElementById('find-mid-btn').classList.add('hidden-screen');
-        
         const loadingBlock = document.getElementById('loading-block');
         loadingBlock.classList.remove('hidden-screen');
         loadingBlock.classList.add('flex');
@@ -1196,11 +1295,8 @@
         const stationWithSuff = result.name.endsWith('역') ? result.name : `${result.name}역`;
 
         let spot1, spot2, spot3, recs = [];
-
-        // 네이버 지도로 역 자체만 연결
         const searchStationUrl = `https://map.naver.com/v5/search/${encodeURIComponent(stationWithSuff)}`;
 
-        // 선택된 카테고리에 따른 추천 스팟 구성
         if (state.category === '카공') {
           spot1 = await fetchRealPlace(result.name, '스터디카페');
           spot2 = await fetchRealPlace(result.name, '카페');
@@ -1228,7 +1324,6 @@
             }
           ];
         } else if (state.category === '기타') {
-          // 기타 : 1. 맛집 2. 카페 3. 놀거리 4. 근처 찾아보기
           spot1 = await fetchRealPlace(result.name, '맛집');
           spot2 = await fetchRealPlace(result.name, '카페');
           spot3 = await fetchRealPlace(result.name, '놀거리');
@@ -1244,7 +1339,6 @@
             }
           ];
         } else {
-          // '맛집 투어' 기본 추천
           spot1 = await fetchRealPlace(result.name, '맛집');
           spot2 = await fetchRealPlace(result.name, '카페');
           recs = [
@@ -1259,41 +1353,29 @@
           ];
         }
 
-        loadingBlock.classList.remove('flex');
-        loadingBlock.classList.add('hidden-screen');
-        
-        document.getElementById('result-block').classList.remove('hidden-screen');
-        document.getElementById('mid-station-name').textContent = result.name;
-        document.getElementById('mid-station-desc').textContent = result.note;
+        const midResult = {
+          stationName: result.name,
+          note: result.note,
+          recs: recs
+        };
 
-        const recWrap = document.getElementById('recommend-list');
-        recWrap.innerHTML = '';
+        state.isCalculated = true;
+        state.midResult = midResult;
 
-        recs.forEach((r, i) => {
-          const card = document.createElement('a');
-          card.href = r.url;
-          card.target = '_blank';
-          card.rel = 'noopener noreferrer';
-          card.className = 'pop-in bg-surface2 border border-line rounded-2xl p-4 flex items-center justify-between gap-3 hover:scale-[1.01] hover:border-lime/30 transition-all cursor-pointer group';
-          card.style.animationDelay = `${i * 0.08}s`;
-          card.innerHTML = `
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="w-11 h-11 rounded-xl bg-white border border-line flex items-center justify-center text-xl shrink-0">${r.emoji}</div>
-              <div class="min-w-0 text-ink">
-                <p class="text-sm font-semibold truncate group-hover:text-lime transition-colors">${r.name}</p>
-                <p class="text-xs text-sub truncate">${r.desc}</p>
-              </div>
-            </div>
-            <div class="text-[10px] text-lime font-mono bg-lime/10 px-2.5 py-1 rounded-lg shrink-0 border border-lime/20 group-hover:bg-lime group-hover:text-white transition-all">
-              검색하기 ↗
-            </div>
-          `;
-          recWrap.appendChild(card);
-        });
+        if (useSupabase && supabaseClient) {
+          await supabaseClient.from('rooms').update({
+            is_calculated: true,
+            mid_result: midResult
+          }).eq('id', state.roomCode);
+        } else {
+          saveRoomLocal();
+        }
+
+        renderMidResultUI(midResult);
       });
 
       /* ============================================================
-       * 7. 초대 링크로 진입한 경우 자동으로 참여 화면으로 이동
+       * 7. 초대 링크로 진입한 경우 자동 이동 판별
        * ============================================================ */
       async function initFromUrl() {
         const params = new URLSearchParams(location.search);
@@ -1301,12 +1383,15 @@
         if (!code) { showScreen(1); return; }
 
         state.roomCode = code;
+        state.isHost = isHostForRoom(code);
 
         if (useSupabase && supabaseClient) {
           const { data } = await supabaseClient.from('rooms').select('*').eq('id', code).single();
           if (data) {
             state.roomName = data.name;
             state.category = data.category;
+            state.isCalculated = data.is_calculated || false;
+            state.midResult = data.mid_result || null;
           } else {
             state.roomName = '알 수 없는 모임';
             state.category = '기타';
@@ -1317,12 +1402,31 @@
             state.roomName = room.name;
             state.category = room.category;
             state.participants = room.participants || [];
+            state.isCalculated = room.isCalculated || false;
+            state.midResult = room.midResult || null;
           } else {
             state.roomName = '알 수 없는 모임';
             state.category = '기타';
           }
         }
 
+        // 이미 계산이 완료된 방 -> 바로 3단계 결과 화면 이동
+        if (state.isCalculated) {
+          document.getElementById('result-room-title').textContent = `"${state.roomName}" 모임`;
+          showScreen(3);
+          startParticipantSync();
+          return;
+        }
+
+        // 이미 해당 방에 역을 등록한 유저 -> 2단계 스킵하고 3단계 대기 화면 이동
+        if (hasJoinedRoom(code)) {
+          document.getElementById('result-room-title').textContent = `"${state.roomName}" 모임`;
+          showScreen(3);
+          startParticipantSync();
+          return;
+        }
+
+        // 신규 유저 -> 2단계 입력 화면 표시
         document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
         showScreen(2);
       }
