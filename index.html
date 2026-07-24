@@ -186,10 +186,19 @@
     <!-- [데스크톱 전용 Left Hero Panel] - lg 이상에서 노출 -->
     <div class="hidden lg:flex lg:col-span-6 flex-col justify-between p-8 xl:p-12 h-full min-h-[640px]">
       <div>
-        <div class="flex items-center gap-2 mb-8">
-          <div class="w-10 h-10 rounded-2xl bg-lime/10 border border-lime/30 flex items-center justify-center text-xl">🚇</div>
+        <button id="hero-home-btn" type="button" class="flex items-center gap-2 mb-8 cursor-pointer text-left focus:outline-none">
+          <!-- 히어로 패널 로고 -->
+          <div class="w-10 h-10 rounded-2xl bg-lime/10 border border-lime/30 flex items-center justify-center shrink-0">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="overflow-visible">
+              <path d="M3 6L9 3L15 6L21 3V18L15 21L9 18L3 21V6Z" fill="#48BB0D" fill-opacity="0.15" stroke="#48BB0D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M9 3V18" stroke="#48BB0D" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M15 6V21" stroke="#48BB0D" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M12 6C10.067 6 8.5 7.567 8.5 9.5C8.5 12.25 12 15.5 12 15.5C12 15.5 15.5 12.25 15.5 9.5C15.5 7.567 13.933 6 12 6Z" fill="#48BB0D" stroke="#FFFFFF" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="12" cy="9.5" r="1" fill="#FFFFFF"/>
+            </svg>
+          </div>
           <span class="font-display font-extrabold text-2xl tracking-tight text-ink">마지노선</span>
-        </div>
+        </button>
         <h1 class="font-display font-extrabold text-4xl xl:text-5xl leading-tight text-ink mb-6">
           친구들과 만날 때<br/>
           <span class="text-lime">가장 공평한 위치</span>를<br/>
@@ -228,10 +237,17 @@
             <span class="theme-btn-b font-mono font-bold text-sm text-white">B</span>
           </button>
 
-          <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
-            <img src="./map.svg" width="26" height="26" viewBox="0 0 26 26" fill="none">
-          </svg>
-          <span class="font-display font-extrabold text-lg tracking-tight">마지노선</span>
+          <!-- 상단 헤더 로고 + 텍스트 버튼 (클릭 시 첫화면으로 이동) -->
+          <button id="home-btn" type="button" class="flex items-center gap-2 cursor-pointer focus:outline-none">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="overflow-visible shrink-0">
+              <path d="M3 6L9 3L15 6L21 3V18L15 21L9 18L3 21V6Z" fill="#48BB0D" fill-opacity="0.15" stroke="#48BB0D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M9 3V18" stroke="#48BB0D" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M15 6V21" stroke="#48BB0D" stroke-width="1.2" stroke-linecap="round"/>
+              <path d="M12 6C10.067 6 8.5 7.567 8.5 9.5C8.5 12.25 12 15.5 12 15.5C12 15.5 15.5 12.25 15.5 9.5C15.5 7.567 13.933 6 12 6Z" fill="#48BB0D" stroke="#FFFFFF" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="12" cy="9.5" r="1" fill="#FFFFFF"/>
+            </svg>
+            <span class="font-display font-extrabold text-lg tracking-tight">마지노선</span>
+          </button>
         </div>
         <div id="stepper" class="flex items-center gap-1.5 font-mono text-[11px] text-sub">
           <span data-step="1" class="step-dot w-2 h-2 rounded-full bg-lime"></span>
@@ -397,7 +413,7 @@
       }
 
       /* ============================================================
-       * 1. 수도권 주요 지하철역 좌표 데이터 (1~9호선 완벽 원본 복원)
+       * 1. 수도권 주요 지하철역 좌표 데이터 (1~9호선)
        * ============================================================ */
       const STATIONS = {
         /* 1호선 */
@@ -963,6 +979,41 @@
         });
       }
 
+      /* [수정 반영 1] 로고/텍스트 클릭 시 첫 화면으로 이동하는 함수 */
+      function resetToHome() {
+        state.roomCode = null;
+        state.roomName = '';
+        state.category = '맛집 투어';
+        state.participants = [];
+        
+        // URL 쿼리 파라미터 제거
+        if (window.history.pushState) {
+          const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.pushState({path: cleanUrl}, '', cleanUrl);
+        }
+
+        // 입력 폼 초기화
+        const roomNameInput = document.getElementById('room-name');
+        if (roomNameInput) {
+          roomNameInput.value = '';
+          roomNameInput.classList.remove('border-pink');
+        }
+        document.querySelectorAll('#category-chips .chip').forEach((c) => c.dataset.selected = 'false');
+        selectedCategory = null;
+
+        // 초대 패널 숨기고 생성 버튼 다시 활성화
+        document.getElementById('invite-panel').classList.add('hidden-screen');
+        document.getElementById('create-room-btn').disabled = false;
+
+        showScreen(1);
+      }
+
+      const homeBtn = document.getElementById('home-btn');
+      if (homeBtn) homeBtn.addEventListener('click', resetToHome);
+
+      const heroHomeBtn = document.getElementById('hero-home-btn');
+      if (heroHomeBtn) heroHomeBtn.addEventListener('click', resetToHome);
+
       /* ============================================================
        * 4. 화면 1 : 방 만들기
        * ============================================================ */
@@ -1010,7 +1061,12 @@
         }
       });
 
+      /* [수정 반영 2] 약속 방이 만들어진 후일 때만 2단계로 이동 */
       document.getElementById('goto-screen2-btn').addEventListener('click', () => {
+        if (!state.roomCode) {
+          alert('약속 방을 먼저 생성해 주세요!');
+          return;
+        }
         document.getElementById('join-room-title').textContent = `"${state.roomName}"에 참여해요`;
         showScreen(2);
       });
@@ -1019,6 +1075,13 @@
        * 5. 화면 2 : 참여자 정보 입력
        * ============================================================ */
       document.getElementById('register-btn').addEventListener('click', async () => {
+        /* [수정 반영 2] 방이 없는 상태에서 접근 불가 검증 */
+        if (!state.roomCode) {
+          alert('약속 방 정보가 존재하지 않습니다. 첫 화면에서 방을 먼저 만들어주세요!');
+          showScreen(1);
+          return;
+        }
+
         const nickInput = document.getElementById('nickname-input');
         const stationInput = document.getElementById('station-input');
         const nickname = nickInput.value.trim();
