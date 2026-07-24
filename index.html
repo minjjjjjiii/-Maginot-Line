@@ -115,7 +115,7 @@
     outline-offset: 2px;
   }
 
-  .hidden-screen { display: none; }
+  .hidden-screen { display: none !important; }
 
   /* ==================== 다크모드 추가 스타일 ==================== */
   html.dark body {
@@ -363,7 +363,7 @@
             ⏳ 방장이 중간 지점 계산을 누르면 결과가 표시됩니다.
           </p>
 
-          <!-- Loading -->
+          <!-- Loading (계산 중일 때만 열리는 블록) -->
           <div id="loading-block" class="hidden-screen flex-col items-center gap-4 py-8">
             <div class="relative w-40 h-2 bg-surface2 rounded-full overflow-visible">
               <div class="absolute -top-2 w-6 h-6 flex items-center justify-center text-lg train-run">🚇</div>
@@ -1172,10 +1172,13 @@
       function updateUIControls() {
         const findMidBtn = document.getElementById('find-mid-btn');
         const guestMsg = document.getElementById('guest-waiting-msg');
+        const loadingBlock = document.getElementById('loading-block');
 
         if (state.isCalculated) {
           findMidBtn.classList.add('hidden-screen');
           guestMsg.classList.add('hidden-screen');
+          loadingBlock.classList.add('hidden-screen');
+          loadingBlock.classList.remove('flex');
           if (state.midResult) renderMidResultUI(state.midResult);
         } else {
           if (state.isHost) {
@@ -1191,7 +1194,10 @@
       function renderMidResultUI(resultData) {
         document.getElementById('find-mid-btn').classList.add('hidden-screen');
         document.getElementById('guest-waiting-msg').classList.add('hidden-screen');
-        document.getElementById('loading-block').classList.add('hidden-screen');
+        
+        const loadingBlock = document.getElementById('loading-block');
+        loadingBlock.classList.add('hidden-screen');
+        loadingBlock.classList.remove('flex');
         
         const resultBlock = document.getElementById('result-block');
         resultBlock.classList.remove('hidden-screen');
